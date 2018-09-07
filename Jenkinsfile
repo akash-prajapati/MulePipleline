@@ -1,49 +1,56 @@
-node {
-   
-   // Maven Home Path
-   def mvnHome
-   
-   // Cloudhub Username , password and project name
-   def cuser   = params.clouduser 
-   def cpwd    = params.cloudpwd
-   def prjname = params.prjname 
-   
-   def env = 'local'
-    
-   stage('SCM') { // for display purposes
-      // Get some code from a GitHub repository
-      git 'https://github.com/akash-prajapati/labmulemaven.git'
-     
-      // Get the Maven tool.
-      // ** NOTE: This 'M3' Maven tool must be configured in the global configuration.
-      mvnHome = tool 'MAVEN_HOME'
-   }
-   
-   /* Deploying to the DEV Machine*/
-   stage('DEV') {
-      env = 'dev'
-      if (isUnix()) {
-         sh "'${mvnHome}/bin/mvn' -Dmaven.test.failure.ignore clean package -P ${env}"
-      } else {
-            bat(/"${mvnHome}\bin\mvn" clean package deploy -Dcloudhub.username=${cuser} -Dcloudhub.password=${cpwd} -Dcloudhub.domain=${prjname}-${env} -P ${env}/)
-      }    
-   }
-   
-    /* Confirmation for Production Deployment. */
-   stage("WAIT_FOR_USER_INPUT") {
-            def userInput = input(id: 'userInput', message: 'Let\'s promote?', parameters: [
-        [$class: 'TextParameterDefinition', defaultValue: 'yes', description: 'Go Ahead', name: 'response']])
-        
-        
-    }
+pipeline {
+
+    agent any	
+		
+	tools {
+		maven 'MAVEN_HOME'
+	}	
 	
-   /* Deploying to the SANDBOX Machine*/
-   stage('SANDBOX') {   
-      env = 'sandbox'	  
-      if (isUnix()) {
-         sh "'${mvnHome}/bin/mvn' -Dmaven.test.failure.ignore clean package -P ${env}"
-      } else {
-          bat(/"${mvnHome}\bin\mvn" clean package deploy -Dcloudhub.username=${cuser} -Dcloudhub.password=${cpwd} -Dcloudhub.domain=${prjname}-${env} -P ${env}/)
-      }    
-   }        
+    stages('Sequential') {  
+	
+		stage('SCM'){										
+			steps {		
+			    
+				echo 'Check-out'
+				echo '=================================================='
+				echo 'cuser=: ${params.cuser}'
+				echo 'cpwd=: ${params.cpwd}'
+				echo 'prjname=: ${params.prjname}'
+				echo 'DEV_ENV=: ${params.DEV_ENV}'
+				echo 'SAND_ENV=: ${params.SAND_ENV}'
+				echo '=================================================='
+				
+				git 'https://github.com/akash-prajapati/labmulemaven.git'		
+			}
+		}			
+		
+		stage('DEV'){							
+			steps {				
+				bat 'mvn clean package deploy -Dcloudhub.username=${cloudhub.username} -Dcloudhub.password=${cloudhub.password} -Dcloudhub.domain=${cloudhub.domain}-dev -P dev'		
+		    }
+		}
+		
+		stage('WAIT_FOR_USER_INPUT') {
+         			
+			input {
+                message "Let\'s promote?"
+                ok "yes"
+                submitter "admin"
+                parameters {
+                    string(name: 'response', defaultValue: 'yes', description: 'Go Ahead')
+                }
+            }
+			steps {
+				echo "Promote the code."
+			}
+        
+		}
+		
+		stage('SANDBOX'){	
+							
+			steps {						
+				bat 'mvn clean package deploy -Dcloudhub.username=${cloudhub.username} -Dcloudhub.password=${cloudhub.password} -Dcloudhub.domain=${cloudhub.domain}-sandbox -P sandbox'
+			}
+		}
+	}
 }
